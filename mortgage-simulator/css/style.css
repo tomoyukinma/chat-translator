@@ -171,8 +171,48 @@ input:focus, select:focus { outline: 2px solid var(--series-1); outline-offset: 
 }
 .field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--text-secondary); }
 .field small { color: var(--text-muted); font-size: 0.78rem; min-height: 1em; }
-.ym-input { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; color: var(--text-secondary); }
-.ym-input input { text-align: right; }
+
+/* 数値 + 単位（円・%・年）を一体にした入力 */
+.unit-input {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  overflow: hidden;
+}
+.unit-input input {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.unit-input input:focus { outline: none; }
+.unit-input:focus-within { outline: 2px solid var(--series-1); outline-offset: 1px; }
+.unit-suffix {
+  display: flex;
+  align-items: center;
+  padding: 0 0.65rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  background: var(--gridline);
+  flex: none;
+}
+.unit-input-sm { max-width: 9.5rem; }
+.unit-input-sm input { font-size: 0.85rem; padding: 0.4rem 0.5rem; }
+
+/* 年月ピッカー (input[type=month]) */
+input[type="month"] {
+  font-variant-numeric: tabular-nums;
+  min-width: 8.5rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+}
+:root[data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(1); }
 
 .event-block { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px dashed var(--gridline); }
 .event-block-head { display: flex; align-items: center; justify-content: space-between; }
@@ -180,6 +220,7 @@ input:focus, select:focus { outline: 2px solid var(--series-1); outline-offset: 
 
 .event-rows { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.6rem; }
 .event-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.85rem; }
+.event-row-label { color: var(--text-secondary); white-space: nowrap; }
 .event-row-field { display: flex; align-items: center; gap: 0.3rem; }
 .event-row-empty { color: var(--text-muted); font-size: 0.82rem; font-style: normal; }
 

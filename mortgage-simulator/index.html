@@ -105,24 +105,30 @@
   </div>
   <div class="field-grid">
     <label class="field">
-      <span>借入金額（円）</span>
-      <input type="text" inputmode="numeric" class="f-principal" placeholder="26000000">
+      <span>借入金額</span>
+      <span class="unit-input">
+        <input type="text" inputmode="numeric" class="f-principal" placeholder="26,000,000">
+        <span class="unit-suffix">円</span>
+      </span>
       <small class="f-principal-hint"></small>
     </label>
     <label class="field">
-      <span>当初金利（年率 %）</span>
-      <input type="number" step="0.001" min="0" class="f-rate" placeholder="0.775">
-    </label>
-    <label class="field">
-      <span>返済期間（年）</span>
-      <input type="number" step="1" min="1" class="f-term" placeholder="35">
-    </label>
-    <label class="field">
-      <span>返済開始</span>
-      <span class="ym-input">
-        <input type="number" class="f-start-year" placeholder="2016" style="width:5.5em">年
-        <input type="number" min="1" max="12" class="f-start-month" placeholder="1" style="width:3.5em">月
+      <span>当初金利（年率）</span>
+      <span class="unit-input">
+        <input type="number" inputmode="decimal" step="0.001" min="0" max="20" class="f-rate" placeholder="0.775">
+        <span class="unit-suffix">%</span>
       </span>
+    </label>
+    <label class="field">
+      <span>返済期間</span>
+      <span class="unit-input">
+        <input type="number" inputmode="numeric" step="1" min="1" max="50" class="f-term" placeholder="35">
+        <span class="unit-suffix">年</span>
+      </span>
+    </label>
+    <label class="field">
+      <span>返済開始（年月）</span>
+      <input type="month" class="f-start-ym" min="1980-01" max="2100-12">
     </label>
   </div>
 
@@ -145,12 +151,12 @@
 
 <template id="rateChangeRowTemplate">
   <div class="event-row">
-    <span class="ym-input">
-      <input type="number" class="rc-year" placeholder="2026" style="width:5.5em">年
-      <input type="number" min="1" max="12" class="rc-month" placeholder="1" style="width:3.5em">月
-    </span>
-    <span class="event-row-field">
-      → <input type="number" step="0.001" min="0" class="rc-rate" placeholder="1.175" style="width:6em">%
+    <span class="event-row-label">この年月から</span>
+    <input type="month" class="rc-ym" min="1980-01" max="2100-12">
+    <span class="event-row-label">金利を変更</span>
+    <span class="unit-input unit-input-sm">
+      <input type="number" inputmode="decimal" step="0.001" min="0" max="20" class="rc-rate" placeholder="1.175">
+      <span class="unit-suffix">%</span>
     </span>
     <button class="btn btn-icon remove-row" title="削除">✕</button>
   </div>
@@ -158,12 +164,11 @@
 
 <template id="extraPaymentRowTemplate">
   <div class="event-row">
-    <span class="ym-input">
-      <input type="number" class="ep-year" placeholder="2026" style="width:5.5em">年
-      <input type="number" min="1" max="12" class="ep-month" placeholder="1" style="width:3.5em">月
-    </span>
-    <span class="event-row-field">
-      <input type="text" inputmode="numeric" class="ep-amount" placeholder="5000000" style="width:9em">円
+    <span class="event-row-label">この年月に</span>
+    <input type="month" class="ep-ym" min="1980-01" max="2100-12">
+    <span class="unit-input unit-input-sm">
+      <input type="text" inputmode="numeric" class="ep-amount" placeholder="5,000,000">
+      <span class="unit-suffix">円</span>
     </span>
     <select class="ep-method">
       <option value="shorten">期間短縮型</option>

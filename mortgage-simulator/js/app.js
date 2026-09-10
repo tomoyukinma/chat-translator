@@ -55,6 +55,31 @@
   function formatMan(v) { return (v / 10000).toLocaleString("ja-JP", { maximumFractionDigits: 0 }) + "万円"; }
   function formatYm(y, m) { return y + "年" + m + "月"; }
 
+  // input[type=month] の値 <-> {year, month}
+  function toMonthInputValue(year, month) {
+    if (!year || !month) return "";
+    return String(year).padStart(4, "0") + "-" + String(month).padStart(2, "0");
+  }
+  function parseMonthInputValue(str, fallback) {
+    var m = /^(\d{4})-(\d{2})$/.exec(String(str || ""));
+    if (!m) return fallback;
+    return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
+  }
+
+  // 金額入力: フォーカス中は生の数字、フォーカスを外すと桁区切り表示にする
+  function bindMoneyField(input, get, set) {
+    input.addEventListener("focus", function () {
+      var v = get();
+      input.value = v ? String(v) : "";
+    });
+    input.addEventListener("input", function () {
+      set(toInt(input.value));
+    });
+    input.addEventListener("blur", function () {
+      input.value = get().toLocaleString("ja-JP");
+    });
+  }
+
   // ---------- ローン計算 ----------
   function toEngineConfig(loan) {
     return {
@@ -94,8 +119,7 @@
     card.querySelector(".f-principal-hint").textContent = "(" + formatMan(loan.principal) + ")";
     card.querySelector(".f-rate").value = loan.rate;
     card.querySelector(".f-term").value = loan.term;
-    card.querySelector(".f-start-year").value = loan.startYear;
-    card.querySelector(".f-start-month").value = loan.startMonth;
+    card.querySelector(".f-start-ym").value = toMonthInputValue(loan.startYear, loan.startMonth);
     renderRateChangeRows(key);
     renderExtraPaymentRows(key);
   }
@@ -114,8 +138,7 @@
       var node = tpl.content.cloneNode(true);
       var row = node.querySelector(".event-row");
       row.dataset.index = idx;
-      row.querySelector(".rc-year").value = rc.year;
-      row.querySelector(".rc-month").value = rc.month;
+      row.querySelector(".rc-ym").value = toMonthInputValue(rc.year, rc.month);
       row.querySelector(".rc-rate").value = rc.ratePercent;
       wrap.appendChild(node);
     });
@@ -135,8 +158,7 @@
       var node = tpl.content.cloneNode(true);
       var row = node.querySelector(".event-row");
       row.dataset.index = idx;
-      row.querySelector(".ep-year").value = ep.year;
-      row.querySelector(".ep-month").value = ep.month;
+      row.querySelector(".ep-ym").value = toMonthInputValue(ep.year, ep.month);
       row.querySelector(".ep-amount").value = ep.amount.toLocaleString("ja-JP");
       row.querySelector(".ep-method").value = ep.method;
       wrap.appendChild(node);
@@ -151,11 +173,15 @@
       loanRef().name = e.target.value || (key === "A" ? "ローンA" : "ローンB");
       scheduleRecompute();
     });
-    card.querySelector(".f-principal").addEventListener("input", function (e) {
-      loanRef().principal = toInt(e.target.value);
-      card.querySelector(".f-principal-hint").textContent = "(" + formatMan(loanRef().principal) + ")";
-      scheduleRecompute();
-    });
+    bindMoneyField(
+      card.querySelector(".f-principal"),
+      function () { return loanRef().principal; },
+      function (v) {
+        loanRef().principal = v;
+        card.querySelector(".f-principal-hint").textContent = "(" + formatMan(v) + ")";
+        scheduleRecompute();
+      }
+    );
     card.querySelector(".f-rate").addEventListener("input", function (e) {
       loanRef().rate = toNumber(e.target.value);
       scheduleRecompute();
@@ -164,13 +190,11 @@
       loanRef().term = toNumber(e.target.value) || 1;
       scheduleRecompute();
     });
-    card.querySelector(".f-start-year").addEventListener("input", function (e) {
-      loanRef().startYear = toInt(e.target.value);
-      scheduleRecompute();
-    });
-    card.querySelector(".f-start-month").addEventListener("input", function (e) {
-      var v = toInt(e.target.value);
-      loanRef().startMonth = Math.min(12, Math.max(1, v || 1));
+    card.querySelector(".f-start-ym").addEventListener("input", function (e) {
+      var ym = parseMonthInputValue(e.target.value, null);
+      if (!ym) return;
+      loanRef().startYear = ym.year;
+      loanRef().startMonth = ym.month;
       scheduleRecompute();
     });
 
@@ -203,8 +227,10 @@
       if (!row) return;
       var idx = Number(row.dataset.index);
       var rc = loanRef().rateChanges[idx];
-      if (e.target.classList.contains("rc-year")) rc.year = toInt(e.target.value);
-      if (e.target.classList.contains("rc-month")) rc.month = Math.min(12, Math.max(1, toInt(e.target.value) || 1));
+      if (e.target.classList.contains("rc-ym")) {
+        var ym = parseMonthInputValue(e.target.value, null);
+        if (ym) { rc.year = ym.year; rc.month = ym.month; }
+      }
       if (e.target.classList.contains("rc-rate")) rc.ratePercent = toNumber(e.target.value);
       scheduleRecompute();
     });
@@ -222,12 +248,28 @@
       if (!row) return;
       var idx = Number(row.dataset.index);
       var ep = loanRef().extraPayments[idx];
-      if (e.target.classList.contains("ep-year")) ep.year = toInt(e.target.value);
-      if (e.target.classList.contains("ep-month")) ep.month = Math.min(12, Math.max(1, toInt(e.target.value) || 1));
+      if (e.target.classList.contains("ep-ym")) {
+        var ym = parseMonthInputValue(e.target.value, null);
+        if (ym) { ep.year = ym.year; ep.month = ym.month; }
+      }
       if (e.target.classList.contains("ep-amount")) ep.amount = toInt(e.target.value);
       if (e.target.classList.contains("ep-method")) ep.method = e.target.value;
       scheduleRecompute();
     });
+    card.querySelector(".extra-payment-rows").addEventListener("focus", function (e) {
+      if (!e.target.classList.contains("ep-amount")) return;
+      var row = e.target.closest(".event-row");
+      var idx = Number(row.dataset.index);
+      var ep = loanRef().extraPayments[idx];
+      e.target.value = ep.amount ? String(ep.amount) : "";
+    }, true);
+    card.querySelector(".extra-payment-rows").addEventListener("blur", function (e) {
+      if (!e.target.classList.contains("ep-amount")) return;
+      var row = e.target.closest(".event-row");
+      var idx = Number(row.dataset.index);
+      var ep = loanRef().extraPayments[idx];
+      e.target.value = ep.amount.toLocaleString("ja-JP");
+    }, true);
     card.querySelector(".extra-payment-rows").addEventListener("click", function (e) {
       if (!e.target.classList.contains("remove-row")) return;
       var row = e.target.closest(".event-row");
