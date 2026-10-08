@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>住宅ローン シミュレーター</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="app-header">
+  <h1>住宅ローン シミュレーター</h1>
+  <p class="app-sub">金利変更・一部繰上返済などの「もしも」を試して、返済額と利息の変化を比較できます。</p>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab-btn is-active" data-tab="setup" role="tab" aria-selected="true">設定</button>
+  <button class="tab-btn" data-tab="result" role="tab" aria-selected="false">結果</button>
+  <button class="tab-btn" data-tab="invest" role="tab" aria-selected="false">繰上返済 vs 投資</button>
+  <button class="tab-btn" data-tab="compare" role="tab" aria-selected="false">シナリオ比較</button>
+</nav>
+
+<main>
+
+  <!-- ============ 設定タブ ============ -->
+  <section id="tab-setup" class="tab-panel is-active">
+    <div class="panel-card scenario-bar">
+      <label class="field-inline">
+        <span>シナリオ名</span>
+        <input type="text" id="scenarioName" value="ベースシナリオ" maxlength="40">
+      </label>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnLoadSample">サンプル数値を読み込む</button>
+        <button class="btn btn-primary" id="btnSaveScenario">このシナリオを保存</button>
+      </div>
+    </div>
+
+    <div class="panel-card" id="loanCardA" data-loan="A"></div>
+
+    <div class="panel-card">
+      <label class="check-inline">
+        <input type="checkbox" id="enableLoanB">
+        <span>2本目のローンを追加する（ペアローン・親子ローンなど）</span>
+      </label>
+    </div>
+
+    <div class="panel-card" id="loanCardB" data-loan="B" hidden></div>
+
+    <p class="calc-note">
+      ※ 金利変更時は「そのときの残高・残り回数」から返済額を再計算します（実際の銀行の見直し方式）。
+      一部繰上返済は「期間短縮型」（返済額はそのまま・期間が短くなる）と「返済額低減型」（期間はそのまま・返済額が下がる）を選べます。
+      これは元の Excel シートの計算式（当初の借入額・当初期間から再計算していた）とは異なり、より実際の返済に近い方式です。
+    </p>
+  </section>
+
+  <!-- ============ 結果タブ ============ -->
+  <section id="tab-result" class="tab-panel">
+    <div id="statTiles" class="stat-grid"></div>
+
+    <div class="panel-card">
+      <h2 class="panel-title">残高の推移</h2>
+      <div id="balanceChart" class="chart-host"></div>
+    </div>
+
+    <div class="panel-card">
+      <h2 class="panel-title">支払い済み利息・元金の累計</h2>
+      <div id="cumChart" class="chart-host"></div>
+    </div>
+
+    <div class="panel-card">
+      <div class="panel-title-row">
+        <h2 class="panel-title">返済予定表</h2>
+        <button class="btn btn-ghost btn-sm" id="btnToggleTable">明細を表示</button>
+      </div>
+      <div id="scheduleTableWrap" class="table-wrap" hidden></div>
+    </div>
+  </section>
+
+  <!-- ============ 繰上返済 vs 投資タブ ============ -->
+  <section id="tab-invest" class="tab-panel">
+    <div class="panel-card">
+      <h2 class="panel-title">同じお金を「繰上返済」に使うか「積立投資」に回すか</h2>
+      <p class="panel-hint inv-lead">
+        毎月の予算（通常の返済額＋下で入力するお金）は同じにして、2通りの使い方を比べます。
+        繰上返済で早く完済した後は、浮いた返済額も同じ利回りで積み立てる前提です。
+        元のローンの完済予定時点では、どちらもローンが残らないので、手元の運用資産の差がそのまま結果の差になります。
+      </p>
+      <div class="field-grid">
+        <label class="field">
+          <span>対象のローン</span>
+          <select id="invLoan"></select>
+        </label>
+        <label class="field">
+          <span>比較を始める年月</span>
+          <input type="month" id="invBaseYm" min="1980-01" max="2100-12">
+        </label>
+        <label class="field">
+          <span>一括で使えるお金</span>
+          <span class="unit-input">
+            <input type="text" inputmode="numeric" id="invLump" placeholder="0">
+            <span class="unit-suffix">円</span>
+          </span>
+          <small>一括で繰上返済するか、一括で投資するか</small>
+        </label>
+        <label class="field">
+          <span>毎月使えるお金</span>
+          <span class="unit-input">
+            <input type="text" inputmode="numeric" id="invMonthly" placeholder="30,000">
+            <span class="unit-suffix">円/月</span>
+          </span>
+          <small>毎月の増額返済にするか、毎月積み立てるか</small>
+        </label>
+        <label class="field">
+          <span>想定利回り（年率・信託報酬などのコスト控除後）</span>
+          <span class="inv-return-row">
+            <input type="range" id="invReturnRange" min="0" max="10" step="0.1" aria-label="想定利回り">
+            <span class="unit-input unit-input-sm">
+              <input type="number" inputmode="decimal" id="invReturn" step="0.1" min="-10" max="30">
+              <span class="unit-suffix">%</span>
+            </span>
+          </span>
+        </label>
+        <label class="field">
+          <span>運用益にかかる税金</span>
+          <select id="invTax">
+            <option value="0">非課税（NISA）</option>
+            <option value="0.20315">課税口座（20.315%）</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div id="invError" class="panel-card inv-error" hidden></div>
+
+    <div id="invResult">
+      <div id="invVerdict" class="panel-card verdict"></div>
+      <div id="invTiles" class="stat-grid"></div>
+
+      <div class="panel-card">
+        <h2 class="panel-title">純資産の推移（運用資産（税引後） − ローン残高）</h2>
+        <div id="invChart" class="chart-host"></div>
+      </div>
+
+      <div class="panel-card">
+        <h2 class="panel-title">利回り別の比較</h2>
+        <p class="panel-hint">元のローンの完済予定時点の手元資産（税引後）。</p>
+        <div id="invTable" class="table-wrap"></div>
+      </div>
+
+      <p class="calc-note">
+        ※ 運用は毎月複利（年利回りを月次換算）、税金は最後にまとめて売却したときに運用益へ課税する前提です。
+        実際の投資信託は値動きがあり、元本は保証されません。利回りは一定と仮定しています。
+        住宅ローン控除・団体信用生命保険・繰上返済手数料・NISA の非課税枠の上限（年360万円・生涯1,800万円）は考慮していません。
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ シナリオ比較タブ ============ -->
+  <section id="tab-compare" class="tab-panel">
+    <div class="panel-card">
+      <h2 class="panel-title">保存したシナリオ</h2>
+      <p class="panel-hint">比較したいシナリオにチェックを入れてください（最大8件）。</p>
+      <div id="scenarioList" class="scenario-list"></div>
+    </div>
+
+    <div class="panel-card">
+      <h2 class="panel-title">残高の比較（合計）</h2>
+      <div id="compareChart" class="chart-host"></div>
+    </div>
+
+    <div class="panel-card">
+      <h2 class="panel-title">比較表</h2>
+      <div id="compareTableWrap" class="table-wrap"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <p>入力したデータはこの端末のブラウザ内（localStorage）のみに保存され、外部には送信されません。</p>
+</footer>
+
+<template id="loanCardTemplate">
+  <div class="loan-head">
+    <input type="text" class="loan-name" maxlength="20" placeholder="借入名（例：とも）">
+  </div>
+  <div class="field-grid">
+    <label class="field">
+      <span>借入金額</span>
+      <span class="unit-input">
+        <input type="text" inputmode="numeric" class="f-principal" placeholder="26,000,000">
+        <span class="unit-suffix">円</span>
+      </span>
+      <small class="f-principal-hint"></small>
+    </label>
+    <label class="field">
+      <span>当初金利（年率）</span>
+      <span class="unit-input">
+        <input type="number" inputmode="decimal" step="0.001" min="0" max="20" class="f-rate" placeholder="0.775">
+        <span class="unit-suffix">%</span>
+      </span>
+    </label>
+    <label class="field">
+      <span>返済期間</span>
+      <span class="unit-input">
+        <input type="number" inputmode="numeric" step="1" min="1" max="50" class="f-term" placeholder="35">
+        <span class="unit-suffix">年</span>
+      </span>
+    </label>
+    <label class="field">
+      <span>返済開始（年月）</span>
+      <input type="month" class="f-start-ym" min="1980-01" max="2100-12">
+    </label>
+  </div>
+
+  <div class="event-block">
+    <div class="event-block-head">
+      <h3>金利変更イベント</h3>
+      <button class="btn btn-ghost btn-sm add-rate-change">＋ 追加</button>
+    </div>
+    <div class="event-rows rate-change-rows"></div>
+  </div>
+
+  <div class="event-block">
+    <div class="event-block-head">
+      <h3>一部繰上返済イベント</h3>
+      <button class="btn btn-ghost btn-sm add-extra-payment">＋ 追加</button>
+    </div>
+    <div class="event-rows extra-payment-rows"></div>
+  </div>
+</template>
+
+<template id="rateChangeRowTemplate">
+  <div class="event-row">
+    <span class="event-row-label">この年月から</span>
+    <input type="month" class="rc-ym" min="1980-01" max="2100-12">
+    <span class="event-row-label">金利を変更</span>
+    <span class="unit-input unit-input-sm">
+      <input type="number" inputmode="decimal" step="0.001" min="0" max="20" class="rc-rate" placeholder="1.175">
+      <span class="unit-suffix">%</span>
+    </span>
+    <button class="btn btn-icon remove-row" title="削除">✕</button>
+  </div>
+</template>
+
+<template id="extraPaymentRowTemplate">
+  <div class="event-row">
+    <span class="event-row-label">この年月に</span>
+    <input type="month" class="ep-ym" min="1980-01" max="2100-12">
+    <span class="unit-input unit-input-sm">
+      <input type="text" inputmode="numeric" class="ep-amount" placeholder="5,000,000">
+      <span class="unit-suffix">円</span>
+    </span>
+    <select class="ep-method">
+      <option value="shorten">期間短縮型</option>
+      <option value="reduce">返済額低減型</option>
+    </select>
+    <button class="btn btn-icon remove-row" title="削除">✕</button>
+  </div>
+</template>
+
+<script src="js/amortization.js"></script>
+<script src="js/invest.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
