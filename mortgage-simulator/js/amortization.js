@@ -34,7 +34,8 @@
   // config = {
   //   principal, annualRatePercent, termYears, startYear, startMonth,
   //   rateChanges: [{year, month, ratePercent}],
-  //   extraPayments: [{year, month, amount, method: 'shorten'|'reduce'}]
+  //   extraPayments: [{year, month, amount, method: 'shorten'|'reduce'}],
+  //   recurringExtra: {year, month, amount}   // 指定年月から毎月、期間短縮型で上乗せ返済
   // }
   function buildSchedule(config) {
     var totalMonths = Math.max(1, Math.round(config.termYears * 12));
@@ -44,6 +45,9 @@
     var extraPayments = (config.extraPayments || [])
       .slice()
       .sort(function (a, b) { return ymKey(a.year, a.month) - ymKey(b.year, b.month); });
+
+    var recurring = config.recurringExtra && config.recurringExtra.amount > 0 ? config.recurringExtra : null;
+    var recurringFrom = recurring ? ymKey(recurring.year, recurring.month) : 0;
 
     var balance = config.principal;
     var currentRate = config.annualRatePercent;
@@ -68,7 +72,7 @@
 
       var remainingMonths = totalMonths - monthsElapsed + 1;
 
-      while (rateIdx < rateChanges.length && ymKey(rateChanges[rateIdx].year, rateChanges[rateIdx].month) === ymKey(y, m)) {
+      while (rateIdx < rateChanges.length && ymKey(rateChanges[rateIdx].year, rateChanges[rateIdx].month) <= ymKey(y, m)) {
         currentRate = rateChanges[rateIdx].ratePercent;
         payment = calcPayment(currentRate / 100 / 12, Math.max(remainingMonths, 1), balance);
         rateIdx++;
@@ -80,10 +84,14 @@
       var extra = 0;
       var extraMethod = null;
 
-      if (extraIdx < extraPayments.length && ymKey(extraPayments[extraIdx].year, extraPayments[extraIdx].month) === ymKey(y, m)) {
-        extra = extraPayments[extraIdx].amount;
-        extraMethod = extraPayments[extraIdx].method || "shorten";
+      while (extraIdx < extraPayments.length && ymKey(extraPayments[extraIdx].year, extraPayments[extraIdx].month) <= ymKey(y, m)) {
+        extra += extraPayments[extraIdx].amount;
+        if (extraMethod !== "reduce") extraMethod = extraPayments[extraIdx].method || "shorten";
         extraIdx++;
+      }
+      if (recurring && ymKey(y, m) >= recurringFrom) {
+        extra += recurring.amount;
+        if (!extraMethod) extraMethod = "shorten";
       }
 
       if (principalPaid < 0) principalPaid = 0;

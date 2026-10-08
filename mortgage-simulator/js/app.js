@@ -22,12 +22,26 @@
     };
   }
 
+  function defaultInvest() {
+    var now = new Date();
+    return {
+      loanKey: "A",
+      baseYear: now.getFullYear(),
+      baseMonth: now.getMonth() + 1,
+      lumpSum: 0,
+      monthly: 30000,
+      returnPct: 4,
+      taxRate: 0
+    };
+  }
+
   function sampleState() {
     return {
       scenarioName: "ベースシナリオ",
       loanBEnabled: true,
       loanA: defaultLoan("とも", 26000000, 0.775, 35, 2016, 1),
-      loanB: defaultLoan("まい", 12800000, 0.675, 35, 2016, 1)
+      loanB: defaultLoan("まい", 12800000, 0.675, 35, 2016, 1),
+      invest: defaultInvest()
     };
   }
 
@@ -385,7 +399,221 @@
     renderCumChart(lastResults);
     renderScheduleTable(lastResults);
   }
-  var scheduleRecompute = debounce(renderResults, 120);
+
+  var activeTab = "setup";
+  var scheduleRecompute = debounce(function () {
+    renderResults();
+    if (activeTab === "invest") renderInvest();
+  }, 120);
+
+  // ---------- 繰上返済 vs 投資 ----------
+  function formatDuration(months) {
+    var y = Math.floor(months / 12), m = months % 12;
+    if (!y) return m + "か月";
+    return m ? y + "年" + m + "か月" : y + "年";
+  }
+  function formatSigned(v) {
+    if (Math.abs(v) < 0.5) return "±0円";
+    return (v > 0 ? "+" : "−") + formatYen(Math.abs(v));
+  }
+  function formatPct(v) { return (Math.round(v * 100) / 100).toFixed(2) + "%"; }
+
+  function syncInvestInputs() {
+    var inv = state.invest;
+    document.getElementById("invBaseYm").value = toMonthInputValue(inv.baseYear, inv.baseMonth);
+    document.getElementById("invLump").value = inv.lumpSum.toLocaleString("ja-JP");
+    document.getElementById("invMonthly").value = inv.monthly.toLocaleString("ja-JP");
+    document.getElementById("invReturn").value = inv.returnPct;
+    document.getElementById("invReturnRange").value = inv.returnPct;
+    document.getElementById("invTax").value = String(inv.taxRate);
+  }
+
+  function renderInvestLoanOptions() {
+    var inv = state.invest;
+    var options = [{ key: "A", loan: state.loanA }];
+    if (state.loanBEnabled && state.loanB) options.push({ key: "B", loan: state.loanB });
+    if (!options.some(function (o) { return o.key === inv.loanKey; })) inv.loanKey = "A";
+    document.getElementById("invLoan").innerHTML = options.map(function (o) {
+      return '<option value="' + o.key + '"' + (o.key === inv.loanKey ? " selected" : "") + ">" +
+        escapeHtml(o.loan.name) + "（当初金利 " + o.loan.rate + "%）</option>";
+    }).join("");
+  }
+
+  function renderInvest() {
+    var inv = state.invest;
+    renderInvestLoanOptions();
+    var loan = inv.loanKey === "B" ? state.loanB : state.loanA;
+
+    var errBox = document.getElementById("invError");
+    var resBox = document.getElementById("invResult");
+    function showError(msg) {
+      errBox.textContent = msg;
+      errBox.hidden = false;
+      resBox.hidden = true;
+    }
+
+    var prep = Invest.prepare({
+      loanConfig: toEngineConfig(loan),
+      baseYear: inv.baseYear,
+      baseMonth: inv.baseMonth,
+      lumpSum: inv.lumpSum,
+      monthly: inv.monthly
+    });
+    if (prep.error) return showError(prep.error);
+    if (prep.totalFunds <= 0) return showError("「一括で使えるお金」か「毎月使えるお金」を入力すると比較できます。");
+    errBox.hidden = true;
+    resBox.hidden = false;
+
+    var sim = Invest.simulate(prep, inv.returnPct, inv.taxRate);
+    var be = Invest.breakEvenReturn(prep, inv.taxRate);
+    var beSim = be !== null ? Invest.simulate(prep, be, inv.taxRate) : null;
+
+    renderInvestVerdict(loan, prep, sim, be);
+    renderInvestTiles(prep, sim, be, beSim);
+    renderInvestChart(prep, sim);
+    renderInvestTable(prep);
+  }
+
+  function renderInvestVerdict(loan, prep, sim, be) {
+    var inv = state.invest;
+    var colorA = resolveColor(PALETTE[0]), colorB = resolveColor(PALETTE[1]);
+    var diff = sim.diff;
+    var diffText;
+    if (Math.abs(diff) < 0.5) diffText = "どちらも同じ金額です";
+    else if (diff > 0) diffText = '積立投資のほうが <span class="num">' + formatYen(diff) + "</span> 多くなります";
+    else diffText = '繰上返済のほうが <span class="num">' + formatYen(-diff) + "</span> 多くなります";
+
+    var beHtml = be === null
+      ? "損益分岐の利回り <strong>—</strong><span>年 −10%〜30% の範囲では結果が逆転しません</span>"
+      : "損益分岐の利回り <strong>年 " + formatPct(be) + "</strong><span>これより高い利回りなら積立投資、低ければ繰上返済のほうが手元資産が多くなります</span>";
+
+    var aSub = prep.monthsShortened > 0
+      ? formatYm(prep.prepayEnd.year, prep.prepayEnd.month) + "に完済し、その後は浮いた返済額を積立"
+      : "完済時期は変わりません";
+
+    document.getElementById("invVerdict").innerHTML =
+      '<div class="verdict-head">' + escapeHtml(loan.name) + "のローン・元の完済予定 " +
+      formatYm(prep.end.year, prep.end.month) + " 時点の手元資産（税引後）／想定利回り 年 " + inv.returnPct + "%</div>" +
+      '<div class="verdict-cols">' +
+        '<div class="verdict-col' + (diff < -0.5 ? " is-larger" : "") + '">' +
+          '<div class="verdict-col-label"><span class="key" style="background:' + colorA + '"></span>A. 繰上返済</div>' +
+          '<div class="verdict-col-value">' + formatYen(sim.finalA) + "</div>" +
+          '<div class="verdict-col-sub">' + aSub + "</div>" +
+        "</div>" +
+        '<div class="verdict-col' + (diff > 0.5 ? " is-larger" : "") + '">' +
+          '<div class="verdict-col-label"><span class="key" style="background:' + colorB + '"></span>B. 積立投資</div>' +
+          '<div class="verdict-col-value">' + formatYen(sim.finalB) + "</div>" +
+          '<div class="verdict-col-sub">ローンは通常どおり返済し、お金は積立</div>' +
+        "</div>" +
+      "</div>" +
+      '<div class="verdict-diff">' + diffText + "</div>" +
+      '<div class="verdict-be">' + beHtml + "</div>";
+  }
+
+  function renderInvestTiles(prep, sim, be, beSim) {
+    var tiles = [
+      {
+        label: "残りの利息（このまま返済）",
+        value: formatYen(prep.remainingInterest),
+        sub: formatYm(prep.base.year, prep.base.month) + "〜" + formatYm(prep.end.year, prep.end.month)
+      },
+      {
+        label: "繰上返済で減る利息",
+        value: formatYen(prep.interestSaved),
+        sub: prep.monthsShortened > 0 ? "完済が " + formatDuration(prep.monthsShortened) + " 早まる" : "完済時期は同じ"
+      },
+      {
+        label: "積立投資の運用益（税引後）",
+        value: formatYen(sim.gainB),
+        sub: "積立元本 " + formatYen(sim.basisB)
+      },
+      {
+        label: "ペイするのに必要な運用益",
+        value: beSim ? formatYen(beSim.gainB) : "—",
+        sub: beSim ? "年 " + formatPct(be) + " で運用した場合。これを超えれば積立投資が上回る" : ""
+      }
+    ];
+    document.getElementById("invTiles").innerHTML = tiles.map(function (t) {
+      return '<div class="stat-tile"><div class="stat-label">' + t.label + "</div>" +
+        '<div class="stat-value">' + t.value + "</div>" +
+        (t.sub ? '<div class="stat-sub">' + t.sub + "</div>" : "") + "</div>";
+    }).join("");
+  }
+
+  function renderInvestChart(prep, sim) {
+    var markers = [];
+    if (prep.monthsShortened > 0) {
+      markers.push({
+        idx: Amortization.ymKey(prep.prepayEnd.year, prep.prepayEnd.month),
+        label: "A 完済 " + formatYm(prep.prepayEnd.year, prep.prepayEnd.month)
+      });
+    }
+    Charts.renderLineChart(document.getElementById("invChart"), {
+      series: [
+        { key: "A", label: "A. 繰上返済", color: resolveColor(PALETTE[0]), points: sim.series.map(function (p) { return { idx: p.key, value: p.netA }; }), pad: "hold" },
+        { key: "B", label: "B. 積立投資", color: resolveColor(PALETTE[1]), points: sim.series.map(function (p) { return { idx: p.key, value: p.netB }; }), pad: "hold" }
+      ],
+      markers: markers,
+      yFormat: formatMan
+    });
+  }
+
+  function renderInvestTable(prep) {
+    var inv = state.invest;
+    var rates = [0, 1, 2, 3, 4, 5, 6, 7];
+    if (rates.indexOf(inv.returnPct) === -1) rates.push(inv.returnPct);
+    rates.sort(function (a, b) { return a - b; });
+
+    var rows = rates.map(function (r) {
+      var s = Invest.simulate(prep, r, inv.taxRate);
+      var note = Math.abs(s.diff) < 0.5 ? "" : (s.diff > 0 ? "投資が多い" : "返済が多い");
+      return '<tr class="' + (r === inv.returnPct ? "is-current" : "") + '">' +
+        "<td>年 " + r + "%" + (r === inv.returnPct ? "（想定）" : "") + "</td>" +
+        "<td>" + formatYen(s.finalA) + "</td>" +
+        "<td>" + formatYen(s.finalB) + "</td>" +
+        "<td>" + formatSigned(s.diff) + '<span class="diff-note">' + note + "</span></td></tr>";
+    }).join("");
+
+    document.getElementById("invTable").innerHTML =
+      '<table class="sched"><thead><tr><th>利回り</th><th>A. 繰上返済</th><th>B. 積立投資</th><th>差（B − A）</th></tr></thead><tbody>' +
+      rows + "</tbody></table>";
+  }
+
+  var scheduleInvest = debounce(renderInvest, 40);
+
+  function wireInvest() {
+    document.getElementById("invLoan").addEventListener("change", function (e) {
+      state.invest.loanKey = e.target.value;
+      scheduleInvest();
+    });
+    document.getElementById("invBaseYm").addEventListener("input", function (e) {
+      var ym = parseMonthInputValue(e.target.value, null);
+      if (!ym) return;
+      state.invest.baseYear = ym.year;
+      state.invest.baseMonth = ym.month;
+      scheduleInvest();
+    });
+    bindMoneyField(document.getElementById("invLump"),
+      function () { return state.invest.lumpSum; },
+      function (v) { state.invest.lumpSum = v; scheduleInvest(); });
+    bindMoneyField(document.getElementById("invMonthly"),
+      function () { return state.invest.monthly; },
+      function (v) { state.invest.monthly = v; scheduleInvest(); });
+    document.getElementById("invReturn").addEventListener("input", function (e) {
+      state.invest.returnPct = toNumber(e.target.value);
+      document.getElementById("invReturnRange").value = state.invest.returnPct;
+      scheduleInvest();
+    });
+    document.getElementById("invReturnRange").addEventListener("input", function (e) {
+      state.invest.returnPct = toNumber(e.target.value);
+      document.getElementById("invReturn").value = state.invest.returnPct;
+      scheduleInvest();
+    });
+    document.getElementById("invTax").addEventListener("change", function (e) {
+      state.invest.taxRate = toNumber(e.target.value);
+      scheduleInvest();
+    });
+  }
 
   // ---------- タブ切り替え ----------
   document.querySelectorAll(".tab-btn").forEach(function (btn) {
@@ -395,8 +623,10 @@
       btn.classList.add("is-active");
       btn.setAttribute("aria-selected", "true");
       document.getElementById("tab-" + btn.dataset.tab).classList.add("is-active");
-      if (btn.dataset.tab === "result") renderResults();
-      if (btn.dataset.tab === "compare") renderCompareTab();
+      activeTab = btn.dataset.tab;
+      if (activeTab === "result") renderResults();
+      if (activeTab === "invest") renderInvest();
+      if (activeTab === "compare") renderCompareTab();
     });
   });
 
@@ -422,6 +652,7 @@
     document.getElementById("loanCardB").hidden = !state.loanBEnabled;
     buildLoanCard("A");
     buildLoanCard("B");
+    syncInvestInputs();
     scheduleRecompute();
   });
 
@@ -540,10 +771,21 @@
     renderCompareChartAndTable();
   }
 
+  var lastWidth = window.innerWidth;
+  window.addEventListener("resize", debounce(function () {
+    if (window.innerWidth === lastWidth) return;
+    lastWidth = window.innerWidth;
+    if (activeTab === "result") renderResults();
+    if (activeTab === "invest") renderInvest();
+    if (activeTab === "compare") renderCompareChartAndTable();
+  }, 200));
+
   // ---------- 初期化 ----------
   document.getElementById("enableLoanB").checked = state.loanBEnabled;
   document.getElementById("loanCardB").hidden = !state.loanBEnabled;
   buildLoanCard("A");
   buildLoanCard("B");
+  wireInvest();
+  syncInvestInputs();
   renderResults();
 })();

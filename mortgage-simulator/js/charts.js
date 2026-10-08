@@ -29,6 +29,13 @@
     return y + "年" + m + "月";
   }
 
+  // 描画単位 = 実際の表示幅にして、狭い画面でも文字が縮まないようにする
+  function chartWidth(container, opts) {
+    if (opts.width) return opts.width;
+    var w = container.clientWidth;
+    return w > 0 ? Math.max(300, Math.min(w, 1200)) : 860;
+  }
+
   function niceStep(max) {
     if (max <= 0) return 1;
     var raw = max / 5;
@@ -65,46 +72,57 @@
       return s.pad === "hold" ? pts[pts.length - 1].value : 0;
     }
 
-    var maxVal = 0;
+    var maxVal = 0, minVal = 0;
     series.forEach(function (s) {
-      s.points.forEach(function (p) { if (p.value > maxVal) maxVal = p.value; });
+      s.points.forEach(function (p) {
+        if (p.value > maxVal) maxVal = p.value;
+        if (p.value < minVal) minVal = p.value;
+      });
     });
-    if (maxVal <= 0) maxVal = 1;
+    if (maxVal - minVal <= 0) maxVal = 1;
 
-    var W = opts.width || 860, H = opts.height || 300;
-    var padL = 64, padR = 16, padT = 16, padB = 32;
+    var W = chartWidth(container, opts), H = opts.height || Math.min(300, Math.round(W * 0.75));
+    var padL = 76, padR = 16, padT = 16, padB = 32;
     var plotW = W - padL - padR, plotH = H - padT - padB;
 
-    var step = niceStep(maxVal);
+    var step = niceStep(maxVal - minVal);
     var yMax = Math.ceil(maxVal / step) * step;
+    var yMin = Math.floor(minVal / step) * step;
 
     function xPos(idx) { return padL + (idx - minIdx) / Math.max(1, (maxIdx - minIdx)) * plotW; }
-    function yPos(v) { return padT + plotH - (v / yMax) * plotH; }
+    function yPos(v) { return padT + plotH - ((v - yMin) / (yMax - yMin)) * plotH; }
 
     var svg = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img" });
 
     // gridlines + y labels
-    var gridCount = Math.round(yMax / step);
+    var gridCount = Math.round((yMax - yMin) / step);
     for (var g = 0; g <= gridCount; g++) {
-      var gv = g * step;
+      var gv = yMin + g * step;
       var gy = yPos(gv);
       svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: gy, y2: gy, stroke: "var(--gridline)", "stroke-width": 1 }));
       var label = el("text", { x: padL - 8, y: gy + 3, "text-anchor": "end", class: "chart-axis-label" });
       label.textContent = opts.yFormat ? opts.yFormat(gv) : gv;
       svg.appendChild(label);
     }
-    // baseline
-    svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH, stroke: "var(--baseline)", "stroke-width": 1 }));
+    // zero line (baseline)
+    svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: yPos(0), y2: yPos(0), stroke: "var(--baseline)", "stroke-width": 1 }));
 
     // x labels: start, mid, end
-    [minIdx, Math.round((minIdx + maxIdx) / 2), maxIdx].forEach(function (idx) {
-      var t = el("text", { x: xPos(idx), y: H - 8, "text-anchor": "middle", class: "chart-axis-label" });
+    [minIdx, Math.round((minIdx + maxIdx) / 2), maxIdx].forEach(function (idx, n) {
+      var t = el("text", { x: xPos(idx), y: H - 8, "text-anchor": ["start", "middle", "end"][n], class: "chart-axis-label" });
       t.textContent = formatYm(idx);
       svg.appendChild(t);
     });
 
-    var allIdx = [];
-    for (var i = minIdx; i <= maxIdx; i++) allIdx.push(i);
+    (opts.markers || []).forEach(function (mk) {
+      if (mk.idx < minIdx || mk.idx > maxIdx) return;
+      var mx = xPos(mk.idx);
+      svg.appendChild(el("line", { x1: mx, x2: mx, y1: padT, y2: padT + plotH, stroke: "var(--text-muted)", "stroke-width": 1, opacity: 0.6 }));
+      var anchor = mx > W - padR - 120 ? "end" : "start";
+      var t = el("text", { x: anchor === "end" ? mx - 6 : mx + 6, y: padT + 10, "text-anchor": anchor, class: "chart-axis-label" });
+      t.textContent = mk.label;
+      svg.appendChild(t);
+    });
 
     series.forEach(function (s) {
       var d = "";
@@ -201,7 +219,7 @@
     });
     if (maxTotal <= 0) maxTotal = 1;
 
-    var W = opts.width || 860, H = opts.height || 260;
+    var W = chartWidth(container, opts), H = opts.height || Math.min(260, Math.round(W * 0.7));
     var padL = 64, padR = 16, padT = 16, padB = 32;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var step = niceStep(maxTotal);
@@ -223,8 +241,8 @@
     }
     svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH, stroke: "var(--baseline)", "stroke-width": 1 }));
 
-    [minIdx, Math.round((minIdx + maxIdx) / 2), maxIdx].forEach(function (idx) {
-      var t = el("text", { x: xPos(idx), y: H - 8, "text-anchor": "middle", class: "chart-axis-label" });
+    [minIdx, Math.round((minIdx + maxIdx) / 2), maxIdx].forEach(function (idx, n) {
+      var t = el("text", { x: xPos(idx), y: H - 8, "text-anchor": ["start", "middle", "end"][n], class: "chart-axis-label" });
       t.textContent = formatYm(idx);
       svg.appendChild(t);
     });

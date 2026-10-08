@@ -76,7 +76,11 @@ body {
   margin: 0 auto;
   padding: 0 1.25rem;
   border-bottom: 1px solid var(--gridline);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
+.tab-btn { white-space: nowrap; flex: none; }
 .tab-btn {
   appearance: none;
   border: none;
@@ -292,6 +296,43 @@ tr.event-row-extra td { color: var(--series-2); }
   box-shadow: 0 4px 14px rgba(0,0,0,0.12);
   white-space: nowrap;
   z-index: 5;
+}
+
+/* ---------- 繰上返済 vs 投資 ---------- */
+.inv-lead { max-width: 68ch; line-height: 1.7; }
+.inv-return-row { display: flex; align-items: center; gap: 0.75rem; }
+.inv-return-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--series-1); padding: 0; border: none; background: none; }
+.inv-error { color: var(--text-secondary); font-size: 0.9rem; }
+
+.verdict { display: flex; flex-direction: column; gap: 0.9rem; }
+.verdict-head { font-size: 0.85rem; color: var(--text-secondary); }
+.verdict-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.verdict-col {
+  padding: 0.8rem 0.95rem;
+  border-radius: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+}
+.verdict-col.is-larger { border-color: var(--text-secondary); }
+.verdict-col-label { display: flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; color: var(--text-secondary); }
+.verdict-col-label .key { width: 14px; height: 3px; border-radius: 2px; flex: none; }
+.verdict-col-value { font-size: 1.45rem; font-weight: 700; margin-top: 0.25rem; font-variant-numeric: tabular-nums; }
+.verdict-col-sub { font-size: 0.76rem; color: var(--text-muted); margin-top: 0.15rem; }
+.verdict-diff { font-size: 1.02rem; font-weight: 600; }
+.verdict-diff .num { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.verdict-be {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.75rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--gridline);
+  font-size: 0.88rem; color: var(--text-secondary);
+}
+.verdict-be strong { font-size: 1.15rem; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+table.sched tr.is-current td { font-weight: 700; background: var(--surface-1); }
+table.sched .diff-note { color: var(--text-muted); font-weight: 400; font-size: 0.75rem; margin-left: 0.35rem; }
+
+@media (max-width: 560px) {
+  .verdict-cols { grid-template-columns: 1fr; }
 }
 
 .app-footer {
